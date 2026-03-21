@@ -192,7 +192,89 @@ def extract_remix_suggestions(frames_analysis, prompt):
     ]
 
 
-@app.route('/api/analyze', methods=['POST'])
+@app.route('/api/upload', methods=['POST'])
+def upload():
+    """接收视频文件或URL，返回 video_id"""
+    video_id = str(uuid.uuid4())[:8]
+    upload_dir = f'{TEMP_DIR}/uploads'
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # 判断是 URL 还是文件
+    if request.content_type and 'application/json' in request.content_type:
+        data = request.get_json()
+        url = data.get('url', '')
+        if url:
+            output_path = f'{TEMP_DIR}/downloads/{video_id}.mp4'
+            os.makedirs(f'{TEMP_DIR}/downloads', exist_ok=True)
+            try:
+                exec_sync(
+                    f'yt-dlp -f "mp4" --no-playlist -o "{output_path}" "{url}"',
+                    capture_output=True, timeout=120
+                )
+                # 复制到 uploads 目录
+                import shutil
+                shutil.copy(output_path, f'{upload_dir}/{video_id}.mp4')
+                return jsonify({'video_id': video_id, 'source': 'url', 'status': 'ready'})
+            except Exception as e:
+                return jsonify({'error': f'Download failed: {e}'}), 500
+    else:
+        # 文件上传
+        video_file = request.files.get('video')
+        if not video_file:
+            return jsonify({'error': 'No video file'}), 400
+        video_file.save(f'{upload_dir}/{video_id}.mp4')
+        return jsonify({'video_id': video_id, 'source': 'file', 'status': 'ready'})
+
+
+@app.route('/api/analyze/<video_id>', methods=['POST'])
+def analyze_by_id(video_id):
+    """分析指定 video_id 的视频"""
+    video_path = f'{TEMP_DIR}/uploads/{video_id}.mp4'
+    if not os.path.exists(video_path):
+        return jsonify({'error': 'Video not found'}), 404
+
+    duration = get_video_duration(video_path)
+    num_frames = min(8, max(4, int(duration / 6)))
+    frames = extract_frames(video_path, video_id, num_frames)
+
+    if not frames:
+        return jsonify({'error': 'Failed to extract frames'}), 500
+
+    frames_analysis = []
+    for i, frame in enumerate(frames):
+        analysis = analyze_frame_with_qwen(frame['data'], i, frame['timestamp'])
+        frames_analysis.append({'index': i, 'timestamp': frame['timestamp'], 'analysis': analysis})
+
+    raw_analyses = [f['analysis'] for f in frames_analysis]
+    prompt = generate_prompt_from_analysis(raw_analyses)
+    insights = extract_insights(raw_analyses)
+    remix = extract_remix_suggestions(raw_analyses, prompt)
+
+    segments = []
+    for f in frames_analysis:
+        a = f['analysis']
+        segments.append({
+            'start': f['timestamp'] - 3,
+            'end': f['timestamp'] + 3,
+            'title': a.get('scene', f"片段 {f['index']+1}"),
+            'desc': a.get('talking_points', a.get('content_type', '')),
+            'emotion': a.get('emotion', ''),
+            'visual': a.get('visual_elements', ''),
+        })
+
+    result = {
+        'video_id': video_id,
+        'duration': round(duration, 1),
+        'frames_analyzed': len(frames),
+        'prompt': prompt,
+        'segments': segments,
+        'insights': insights or {},
+        'remix': remix,
+    }
+    return jsonify(result)
+
+
+
 def analyze():
     """分析视频主入口"""
     # 处理上传的文件
