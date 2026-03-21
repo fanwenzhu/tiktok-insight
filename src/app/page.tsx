@@ -33,17 +33,18 @@ export default function Home() {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
 
-      let p = 0
-      const interval = setInterval(() => {
-        p += Math.random() * 15
-        if (p >= 90) { clearInterval(interval); p = 90 }
-        setProgress(Math.round(p))
-      }, 500)
+      if (data.error) {
+        alert('分析失败：' + data.error)
+        setUploading(false)
+        return
+      }
 
-      await fetch(`/api/analyze/${data.video_id}`, { method: 'POST' })
-      clearInterval(interval)
+      // 存储分析结果到 sessionStorage
+      if (data.analysis) {
+        sessionStorage.setItem(`analysis_${data.video_id}`, JSON.stringify(data.analysis))
+      }
+
       setProgress(100)
-
       window.location.href = `/analyze/${data.video_id}`
     } catch (e) {
       alert('上传失败：' + String(e))
@@ -68,17 +69,17 @@ export default function Home() {
       })
       const data = await res.json()
 
-      let p = 0
-      const interval = setInterval(() => {
-        p += Math.random() * 15
-        if (p >= 90) { clearInterval(interval); p = 90 }
-        setProgress(Math.round(p))
-      }, 500)
+      if (data.error) {
+        alert('分析失败：' + data.error)
+        setUploading(false)
+        return
+      }
 
-      await fetch(`/api/analyze/${data.video_id}`, { method: 'POST' })
-      clearInterval(interval)
+      if (data.analysis) {
+        sessionStorage.setItem(`analysis_${data.video_id}`, JSON.stringify(data.analysis))
+      }
+
       setProgress(100)
-
       window.location.href = `/analyze/${data.video_id}`
     } catch (e) {
       alert('提交失败：' + String(e))

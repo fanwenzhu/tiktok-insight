@@ -1,74 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readFileSync, existsSync } from 'fs'
-import path from 'path'
 
-// 任务状态存储（生产环境请用 Redis）
-const tasks = new Map<string, {
-  status: 'pending' | 'processing' | 'done' | 'error'
-  progress: number
-  analysis?: any
-  error?: string
-  filePath?: string
-}>()
-
-const PYTHON_BACKEND = process.env.PYTHON_BACKEND_URL || 'http://localhost:5001'
-const UPLOAD_DIR = '/tmp/tiktok-insight/uploads'
+const tasks = new Map<string, any>()
+const PYTHON_BACKEND = process.env.PYTHON_BACKEND_URL || 'https://cab-twelve-capacity-electrical.trycloudflare.com'
 
 export async function POST(req: NextRequest, { params }: { params: { video_id: string } }) {
   const { video_id } = params
 
-  // 查找对应的视频文件
-  let filePath: string | null = null
-  for (const ext of ['mp4', 'avi', 'mov', 'mkv', 'webm']) {
-    const p = path.join(UPLOAD_DIR, `${video_id}.${ext}`)
-    if (existsSync(p)) { filePath = p; break }
-  }
-
-  if (!filePath) {
-    return NextResponse.json({ error: 'Video file not found' }, { status: 404 })
-  }
-
-  tasks.set(video_id, { status: 'processing', progress: 10, filePath })
+  // 查找视频文件（通过 URL 参数或查内存）
+  // 实际通过 file_id 找文件
+  tasks.set(video_id, { status: 'processing', progress: 10 })
 
   // 异步分析
   ;(async () => {
     try {
-      tasks.set(video_id, { status: 'processing', progress: 30, filePath })
-
-      const buffer = readFileSync(filePath)
-      const filename = path.basename(filePath)
-
-      const analyzeFormData = new FormData()
-      analyzeFormData.append('video', new Blob([buffer], { type: 'video/mp4' }), filename)
-
-      tasks.set(video_id, { status: 'processing', progress: 60, filePath })
-
-      const res = await fetch(`${PYTHON_BACKEND}/api/analyze`, {
+      tasks.set(video_id, { status: 'processing', progress: 30 })
+      const res = await fetch(`${PYTHON_BACKEND}/api/analyze/${video_id}`, {
         method: 'POST',
-        body: analyzeFormData,
         signal: AbortSignal.timeout(180000),
       })
-
-      tasks.set(video_id, { status: 'processing', progress: 90, filePath })
-
-      if (!res.ok) {
-        const errText = await res.text()
-        throw new Error(`Backend error ${res.status}: ${errText}`)
-      }
-
+      tasks.set(video_id, { status: 'processing', progress: 60 })
+      if (!res.ok) throw new Error(`Backend error: ${res.status}`)
       const analysis = await res.json()
-      tasks.set(video_id, {
-        status: 'done',
-        progress: 100,
-        analysis,
-        filePath,
-      })
+      tasks.set(video_id, { status: 'done', progress: 100, analysis })
     } catch (e: any) {
-      tasks.set(video_id, {
-        status: 'error',
-        progress: 0,
-        error: e.message,
-      })
+      tasks.set(video_id, { status: 'error', progress: 0, error: e.message })
     }
   })()
 
