@@ -3,10 +3,14 @@
 import { useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 
+type InputMode = 'upload' | 'url'
+
 export default function Home() {
+  const [mode, setMode] = useState<InputMode>('upload')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
+  const [videoUrl, setVideoUrl] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = useCallback(async (file: File) => {
@@ -29,7 +33,6 @@ export default function Home() {
       const res = await fetch('/api/upload', { method: 'POST', body: formData })
       const data = await res.json()
 
-      // 模拟进度
       let p = 0
       const interval = setInterval(() => {
         p += Math.random() * 15
@@ -37,15 +40,48 @@ export default function Home() {
         setProgress(Math.round(p))
       }, 500)
 
-      // 触发分析
       await fetch(`/api/analyze/${data.video_id}`, { method: 'POST' })
       clearInterval(interval)
       setProgress(100)
 
-      // 跳转
       window.location.href = `/analyze/${data.video_id}`
     } catch (e) {
       alert('上传失败：' + String(e))
+      setUploading(false)
+    }
+  }, [])
+
+  const handleUrlSubmit = useCallback(async (url: string) => {
+    if (!url || !url.includes('tiktok.com') && !url.includes('douyin.com')) {
+      alert('请输入正确的 TikTok 或抖音链接')
+      return
+    }
+
+    setUploading(true)
+    setProgress(0)
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      })
+      const data = await res.json()
+
+      let p = 0
+      const interval = setInterval(() => {
+        p += Math.random() * 15
+        if (p >= 90) { clearInterval(interval); p = 90 }
+        setProgress(Math.round(p))
+      }, 500)
+
+      await fetch(`/api/analyze/${data.video_id}`, { method: 'POST' })
+      clearInterval(interval)
+      setProgress(100)
+
+      window.location.href = `/analyze/${data.video_id}`
+    } catch (e) {
+      alert('提交失败：' + String(e))
       setUploading(false)
     }
   }, [])
@@ -76,54 +112,122 @@ export default function Home() {
           爆款视频拆解，<span className="text-indigo-400">AI 帮你做</span>
         </h1>
         <p className="text-gray-400 text-lg max-w-xl mb-12">
-          上传任意 TikTok/抖音爆款视频，AI 自动分析内容结构、<br />
+          上传视频 或 粘贴链接，AI 自动分析内容结构、<br />
           逆向生成提示词、提炼玩法规律，助你批量复刻爆款
         </p>
 
-        {/* Upload Zone */}
-        <div
-          className={`relative w-full max-w-lg border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer ${
-            dragging
-              ? 'border-indigo-400 bg-indigo-500/10'
-              : 'border-white/10 hover:border-indigo-500/40 hover:bg-white/5'
-          }`}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading ? (
-            <div className="space-y-4">
-              <div className="text-4xl">⏳</div>
-              <p className="text-white font-medium">上传分析中...</p>
-              <div className="w-full bg-white/10 rounded-full h-2">
-                <div
-                  className="bg-indigo-500 h-2 rounded-full transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="text-gray-400 text-sm">{progress}%</p>
-            </div>
-          ) : (
-            <>
-              <div className="text-5xl mb-4">📤</div>
-              <p className="text-white font-semibold text-lg mb-2">
-                拖拽视频到这里，或点击上传
-              </p>
-              <p className="text-gray-500 text-sm">支持 MP4，最大 500MB</p>
-            </>
-          )}
-          <input
-            ref={inputRef}
-            type="file"
-            accept="video/mp4,video/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0]
-              if (file) handleUpload(file)
-            }}
-          />
+        {/* Input Mode Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setMode('upload')}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition ${
+              mode === 'upload'
+                ? 'bg-indigo-500 text-white'
+                : 'bg-white/5 text-gray-400 hover:text-white'
+            }`}
+          >
+            📤 上传视频
+          </button>
+          <button
+            onClick={() => setMode('url')}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition ${
+              mode === 'url'
+                ? 'bg-indigo-500 text-white'
+                : 'bg-white/5 text-gray-400 hover:text-white'
+            }`}
+          >
+            🔗 粘贴链接
+          </button>
         </div>
+
+        {/* Upload Zone */}
+        {mode === 'upload' ? (
+          <div
+            className={`relative w-full max-w-lg border-2 border-dashed rounded-2xl p-12 text-center transition-all cursor-pointer ${
+              dragging
+                ? 'border-indigo-400 bg-indigo-500/10'
+                : 'border-white/10 hover:border-indigo-500/40 hover:bg-white/5'
+            }`}
+            onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? (
+              <div className="space-y-4">
+                <div className="text-4xl">⏳</div>
+                <p className="text-white font-medium">上传分析中...</p>
+                <div className="w-full bg-white/10 rounded-full h-2">
+                  <div
+                    className="bg-indigo-500 h-2 rounded-full transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <p className="text-gray-400 text-sm">{progress}%</p>
+              </div>
+            ) : (
+              <>
+                <div className="text-5xl mb-4">📤</div>
+                <p className="text-white font-semibold text-lg mb-2">
+                  拖拽视频到这里，或点击上传
+                </p>
+                <p className="text-gray-500 text-sm">支持 MP4，最大 500MB</p>
+              </>
+            )}
+            <input
+              ref={inputRef}
+              type="file"
+              accept="video/mp4,video/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                if (file) handleUpload(file)
+              }}
+            />
+          </div>
+        ) : (
+          <div className="w-full max-w-lg">
+            <div className="bg-[#1a1a2e] rounded-2xl p-8 border border-white/5">
+              {uploading ? (
+                <div className="space-y-4 text-center">
+                  <div className="text-4xl">⏳</div>
+                  <p className="text-white font-medium">解析链接中...</p>
+                  <div className="w-full bg-white/10 rounded-full h-2">
+                    <div
+                      className="bg-indigo-500 h-2 rounded-full transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <p className="text-gray-400 text-sm">{progress}%</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="text-4xl text-center mb-4">🔗</div>
+                  <p className="text-gray-400 text-sm text-center mb-4">
+                    粘贴 TikTok 或抖音视频链接
+                  </p>
+                  <input
+                    type="url"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleUrlSubmit(videoUrl)}
+                    placeholder="https://www.tiktok.com/@xxx/video/xxx"
+                    className="w-full bg-[#0f0f1a] border border-white/10 text-white rounded-lg px-4 py-3 text-sm placeholder-gray-500 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={() => handleUrlSubmit(videoUrl)}
+                    className="w-full bg-indigo-500 text-white py-3 rounded-lg font-semibold hover:bg-indigo-600 transition"
+                  >
+                    开始分析
+                  </button>
+                  <p className="text-gray-600 text-xs text-center">
+                    支持 TikTok 和抖音链接，视频将在服务器端下载分析
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* Features */}
@@ -133,7 +237,7 @@ export default function Home() {
           {[
             { icon: '🧠', title: 'AI 智能拆解', desc: '自动提取关键帧，分析内容结构、节奏、情绪' },
             { icon: '💡', title: '提示词逆向', desc: '从爆款视频反向生成可用的 AI 提示词' },
-            { icon: '📊', title: '玩法提炼', desc: '总结开场、音乐、字幕风格、节奏规律' },
+            { icon: '📊', title: '玩法提炼', desc: '总结开场，音乐、字幕风格、节奏规律' },
             { icon: '✂️', title: '分片段分析', desc: '自动将视频分成 3-5 个片段，精细化拆解' },
             { icon: '🔄', title: '复刻参考', desc: '基于分析结果给出变体创作方向' },
             { icon: '📈', title: '批量沉淀', desc: '历史记录永久保存，构建自己的爆款素材库' },
