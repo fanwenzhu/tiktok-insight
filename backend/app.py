@@ -11,9 +11,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-DASHSCOPE_API_KEY = os.environ.get(
-    'DASHSCOPE_API_KEY', 'YOUR_DASHSCOPE_API_KEY'
-)
+DASHSCOPE_API_KEY = os.environ.get('DASHSCOPE_API_KEY')
 DASHSCOPE_URL = 'https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation'
 TEMP_DIR = '/tmp/tiktok-insight'
 os.makedirs(TEMP_DIR, exist_ok=True)
